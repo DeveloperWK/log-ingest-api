@@ -19,6 +19,7 @@ pub struct IngestLog {
     pub message: String,
     pub level: String,
     pub service: String,
+    #[serde(default)]
     pub timestamp: Option<i64>,
     pub trace_id: Option<String>,
     pub span_id: Option<String>,

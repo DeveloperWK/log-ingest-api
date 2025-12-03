@@ -1,24 +1,25 @@
+mod handler;
+mod redis_handler;
+mod schema;
+
 use axum::{
     Json, Router,
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
 };
-use redis::aio::MultiplexedConnection;
 
 use serde_json::json;
-use std::net::SocketAddr;
+use std::{net::SocketAddr, sync::Arc, time::Duration};
 use tokio::net::TcpListener;
 
-use crate::handler::ingest_handler;
-mod handler;
-mod redis_handler;
-mod schema;
+use crate::{handler::ingest_handler, redis_handler::StreamBatcher};
 
 #[derive(Debug, Clone)]
 pub struct AppState {
-    redis: MultiplexedConnection,
+    redis_batcher: Arc<StreamBatcher>,
 }
+
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().ok();
@@ -31,7 +32,24 @@ async fn main() {
         .get_multiplexed_tokio_connection()
         .await
         .expect("Failed to connect to Redis");
-    let state = AppState { redis: conn };
+
+    let batcher = Arc::new(StreamBatcher::new(conn, 3, Duration::from_secs(5)));
+    let batcher_clone = batcher.clone();
+    let state = AppState {
+        redis_batcher: batcher.clone(),
+    };
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(batcher_clone.flush_interval).await;
+
+            let mut buffer = batcher_clone.buffer.lock().await;
+            if !buffer.is_empty() {
+                if let Err(e) = batcher_clone.flush(&mut buffer).await {
+                    eprintln!("Failed to flush logs: {:?}", e);
+                }
+            }
+        }
+    });
     let app = Router::new()
         .route("/health", get(health))
         .route("/ingest", post(ingest_handler))
