@@ -1,3 +1,4 @@
+mod api_key_validate;
 mod handler;
 mod redis_handler;
 mod schema;

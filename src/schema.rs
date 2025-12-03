@@ -15,7 +15,7 @@ pub struct IngestLog {
     pub id: uuid::Uuid,
     pub received_at: i64,
     pub client_ip: String,
-    // pub api_key: String,
+    pub api_key: String,
     pub message: String,
     pub level: String,
     pub service: String,

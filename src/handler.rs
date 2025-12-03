@@ -9,10 +9,12 @@ use axum::{
 
 use crate::{
     AppState,
+    api_key_validate::ApiKey,
     schema::{IngestLog, RawLog},
 };
 
 pub async fn ingest_handler(
+    ApiKey(api_key): ApiKey,
     State(state): State<AppState>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     payload: Result<Json<RawLog>, JsonRejection>,
@@ -32,6 +34,7 @@ pub async fn ingest_handler(
     };
     let ingest = IngestLog {
         id: uuid::Uuid::new_v4(),
+        api_key,
         client_ip: addr.ip().to_string(),
         host: payload.host,
         level: payload.level,
@@ -43,17 +46,7 @@ pub async fn ingest_handler(
         timestamp: payload.timestamp,
         trace_id: payload.trace_id,
     };
-    // let AppState { redis } = state;
-    // let redis_client = redis.clone();
-    // produce_to_redis_stream(redis_client, &ingest)
-    //     .await
-    //     .map_err(|e| {
-    //         eprintln!("Failed to produce log to Redis stream: {:?}", e);
-    //         (
-    //             StatusCode::INTERNAL_SERVER_ERROR,
-    //             format!("Failed to persist log data."),
-    //         )
-    //     })?;
+
     if let Err(e) = state.redis_batcher.push(ingest.clone()).await {
         eprintln!("Failed to push log to batcher: {:?}", e);
         return Err((
