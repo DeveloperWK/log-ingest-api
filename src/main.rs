@@ -2,6 +2,7 @@ mod api_key_validate;
 mod handler;
 mod redis_handler;
 mod schema;
+mod validate_api_key_hmac;
 
 use axum::{
     Json, Router,
@@ -14,11 +15,11 @@ use serde_json::json;
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 use tokio::net::TcpListener;
 
-use crate::{handler::ingest_handler, redis_handler::StreamBatcher};
+use crate::{handler::ingest_handler, redis_handler::RedisHandler};
 
 #[derive(Debug, Clone)]
 pub struct AppState {
-    redis_batcher: Arc<StreamBatcher>,
+    redis_batcher: Arc<RedisHandler>,
 }
 
 #[tokio::main]
@@ -34,7 +35,7 @@ async fn main() {
         .await
         .expect("Failed to connect to Redis");
 
-    let batcher = Arc::new(StreamBatcher::new(conn, 3, Duration::from_secs(5)));
+    let batcher = Arc::new(RedisHandler::new(conn, 3, Duration::from_secs(5)));
     let batcher_clone = batcher.clone();
     let state = AppState {
         redis_batcher: batcher.clone(),
@@ -66,7 +67,18 @@ async fn main() {
     .unwrap();
 }
 
-async fn health() -> Result<impl IntoResponse, (StatusCode, String)> {
+use axum::extract::State;
+
+async fn health(
+    State(state): State<AppState>, // <-- extract state here
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    // Now you can call your Redis method:
+    state
+        .redis_batcher
+        .add_validate_api_key("123")
+        .await
+        .unwrap();
+
     let response = Json(json!({"message":"Hello world"}));
     Ok(response)
 }

@@ -3,14 +3,14 @@ use redis::{AsyncCommands, RedisResult, aio::MultiplexedConnection};
 use tokio::sync::Mutex;
 use tokio::time::Duration;
 #[derive(Debug)]
-pub struct StreamBatcher {
+pub struct RedisHandler {
     pub buffer: Mutex<Vec<IngestLog>>,
     pub redis_con: Mutex<MultiplexedConnection>,
     pub max_batch_size: usize,
     pub flush_interval: Duration,
 }
-
-impl StreamBatcher {
+const VALIDATION_TTL_SECONDS: u64 = 86400;
+impl RedisHandler {
     pub fn new(
         redis_con: MultiplexedConnection,
         max_batch_size: usize,
@@ -57,5 +57,16 @@ impl StreamBatcher {
         }
 
         Ok(())
+    }
+    pub async fn add_validate_api_key(&self, api_key: &str) -> RedisResult<()> {
+        let mut con = self.redis_con.lock().await;
+        let _: () = con.set_ex(api_key, 1, VALIDATION_TTL_SECONDS).await?;
+        Ok(())
+    }
+    pub async fn is_api_key_exist(&self, api_key: &str) -> RedisResult<bool> {
+        let mut con = self.redis_con.lock().await;
+        let exist: i32 = con.exists(api_key).await?;
+
+        Ok(exist > 0)
     }
 }
